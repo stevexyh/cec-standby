@@ -11,6 +11,12 @@ import java.util.List;
 
 public final class SetupReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
+        if ("io.github.stevexyh.cecstandby.CONFIG".equals(intent.getAction())) {
+            try {
+                ConfigStore.save(context, intent.getStringExtra("profile"));
+                setResultCode(0); setResultData("Configuration saved; awaiting bridge validation");
+            } catch (Exception e) { setResultCode(1); setResultData("Rejected configuration: " + e.getMessage()); return; }
+        }
         enable(context);
         if (intent.getBooleanExtra("test_sleep", false)) CecService.testSleep();
     }

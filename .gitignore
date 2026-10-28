@@ -1,7 +1,7 @@
 /build/
 /local/
 /.keys/
-/__pycache__/
+__pycache__/
 *.pyc
 *.apk
 *.jks
@@ -11,3 +11,7 @@
 .env
 .env.*
 .DS_Store
+*.p12
+*.pfx
+*.key
+local.properties

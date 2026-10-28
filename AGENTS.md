@@ -18,5 +18,6 @@ For device work also read `docs/INSTALL.md`, `docs/DEBUGGING.md`, `docs/ACCEPTAN
 
 ## Entry points
 - Local build: `./build.sh`
-- Tests: see DEVELOPMENT (all default tests are offline).
+- Tests: `./tools/test.sh` (offline).
+- Staged secret check: `python3 tools/check-secrets.py`.
 - Install/diagnose/uninstall: follow INSTALL; never invoke automatically from build/tests.

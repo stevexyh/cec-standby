@@ -1,10 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.github.stevexyh.cecstandby" android:versionCode="1" android:versionName="0.1.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.github.stevexyh.cecstandby" android:versionCode="2" android:versionName="0.2.0">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="28" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <application android:label="@string/app_name" android:allowBackup="false">
+    <application android:label="@string/app_name" android:allowBackup="false" android:debuggable="false">
         <service android:name=".CecService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:label="@string/app_name">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/service" />
@@ -13,7 +13,7 @@
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
         </service>
         <receiver android:name=".SetupReceiver" android:exported="true" android:permission="android.permission.WRITE_SECURE_SETTINGS">
-            <intent-filter><action android:name="io.github.stevexyh.cecstandby.SETUP" /><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
+            <intent-filter><action android:name="io.github.stevexyh.cecstandby.SETUP" /><action android:name="io.github.stevexyh.cecstandby.CONFIG" /><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
         </receiver>
     </application>
 </manifest>

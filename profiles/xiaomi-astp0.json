@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "xiaomi-astp0-android9",
+  "manufacturer": "Xiaomi",
+  "model": "MiTV-ASTP0",
+  "sdk": 28,
+  "firmware": "22.3.11.890",
+  "vendorId": 4346,
+  "port": 1,
+  "inputId": "com.droidlogic.tvinput/.services.Hdmi1InputService/HW5",
+  "player": "com.xiaomi.mitv.tvplayer/.ExternalSourceActivity",
+  "action": "com.xiaomi.mitv.tvplayer.EXTSRC_PLAY",
+  "inputExtra": "input",
+  "inputValue": 23,
+  "launchers": [
+    "com.mitv.tvhome/.MainActivityUserMode",
+    "com.mitv.tvhome/.MainActivity",
+    "app.orchard.tv/.MainActivity"
+  ],
+  "keepAdb": false,
+  "enabled": true
+}

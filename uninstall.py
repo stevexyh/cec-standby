@@ -6,14 +6,14 @@ import subprocess
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--serial", required=True)
-parser.add_argument("--server-port", default="5038")
+parser.add_argument("--server-port", default="5037")
 args = parser.parse_args()
 adb = ["adb", "-P", args.server_port, "-s", args.serial]
 pkg = "io.github.stevexyh.cecstandby"
 
 
 def shell(*command, check=True):
-    return subprocess.run(adb + ["shell", shlex.join(command)], check=check, text=True, capture_output=True).stdout.strip()
+    return subprocess.run(adb + ["shell", shlex.join(command)], check=check, text=True, capture_output=True, timeout=30).stdout.strip()
 
 
 # Prevent either binding from restoring the helper while removing it.
@@ -35,16 +35,16 @@ if [ -d "$store" ]; then
     case "$pid" in
         ''|*[!0-9]*) ;;
         *)
-            if grep -q '^cec-standby-bridge' "/proc/$pid/cmdline" 2>/dev/null; then
+            if [ "$(tr '\000' '\n' < "/proc/$pid/cmdline" | head -n 1)" = cec-standby-bridge ] 2>/dev/null; then
                 for round in 1 2 3 4 5 6; do
                     kill -0 "$pid" 2>/dev/null || break
                     sleep 1
                 done
-                if kill -0 "$pid" 2>/dev/null && grep -q '^cec-standby-bridge' "/proc/$pid/cmdline"; then kill "$pid"; fi
+                if kill -0 "$pid" 2>/dev/null && [ "$(tr '\000' '\n' < "/proc/$pid/cmdline" | head -n 1)" = cec-standby-bridge ]; then kill "$pid"; fi
             fi
             ;;
     esac
-    for name in pid pid.tmp version version.tmp status.txt status.txt.tmp resume-hdmi resume-hdmi.tmp stop bridge.lock bridge.apk bridge.apk.tmp runtime.log events.log events.previous; do
+    for name in pid pid.tmp version version.tmp status.txt status.txt.tmp resume-hdmi resume-hdmi.tmp stop bridge.lock bridge.apk bridge.apk.tmp runtime.log events.log events.previous profile.json profile.json.tmp heartbeat heartbeat.tmp wake-grace; do
         rm -f "$store/$name"
     done
     # ART creates this cache only inside our newly created bridge directory.
@@ -52,4 +52,4 @@ if [ -d "$store" ]; then
     rmdir "$store" 2>/dev/null || true
 fi
 ''')
-subprocess.run(adb + ["uninstall", pkg], check=True)
+subprocess.run(adb + ["uninstall", pkg], check=True, timeout=30)

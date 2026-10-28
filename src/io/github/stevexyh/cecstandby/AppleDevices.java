@@ -17,6 +17,9 @@ final class AppleDevices {
     }
     private final Map<Integer, Device> devices = new HashMap<>();
     private boolean enabled;
+    private final int vendorId;
+    AppleDevices() { this(4346); }
+    AppleDevices(int vendorId) { this.vendorId = vendorId; }
 
     synchronized void observeSnapshot(String dump, long now) {
         enabled = dump.contains("mHdmiControlEnabled: true");
@@ -30,7 +33,7 @@ final class AppleDevices {
             int physical = Integer.parseInt(match.group(3), 16);
             int port = Integer.parseInt(match.group(4));
             Device old = devices.get(logical);
-            if (vendor == 4346) devices.put(logical, new Device(physical, port, now));
+            if (vendor == vendorId) devices.put(logical, new Device(physical, port, now));
             else if (vendor != 16777215 || (old != null && (old.physical != physical || old.port != port))) devices.remove(logical);
         }
     }

@@ -22,18 +22,18 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Device-local shell process: Xiaomi's package force-stop cannot kill UID 2000. */
+/** Device-local shell worker, independent of application force-stop but not adbd lifetime. */
 public final class ShellBridge {
-    static final String VERSION = "0.1.0";
+    static final String VERSION = "0.2.0";
     static final String DIR = "/data/local/tmp/cec-standby";
-    private static final String INPUT = "com.droidlogic.tvinput/.services.Hdmi1InputService/HW5";
-    private static final String PLAYER = "com.xiaomi.mitv.tvplayer";
+    private final Profile profile;
+    private final boolean active;
     private static final Pattern FOCUS = Pattern.compile("mCurrentFocus=Window\\{[^\\n]*?u[0-9]+\\s+([^/\\s]+)/([^}\\s]+)");
     private static final Pattern WAKE = Pattern.compile("^\\s*(\\d+\\.\\d+)\\s+1000\\s+\\d+\\s+\\d+\\s+I PowerManagerService\\s*: Waking up from sleep.*");
     private static final ScheduledExecutorService TIMEOUTS = Executors.newSingleThreadScheduledExecutor();
     private final Context context;
     private final PowerManager power;
-    private final AppleDevices devices = new AppleDevices();
+    private final AppleDevices devices;
     private final ExecutorService actions = Executors.newSingleThreadExecutor();
     private final File armed = new File(DIR, "resume-hdmi");
     private volatile Process logger;
@@ -41,7 +41,15 @@ public final class ShellBridge {
     private volatile String focus = "unknown", status = "starting", lastAction = "none";
     private long lastStandbyAt = Long.MIN_VALUE / 2;
 
-    private ShellBridge(Context context) { this.context = context; power = context.getSystemService(PowerManager.class); }
+    private ShellBridge(Context context) throws Exception {
+        this.context = context; power = context.getSystemService(PowerManager.class);
+        profile = ConfigStore.parse(new String(Files.readAllBytes(new File(DIR,"profile.json").toPath()), StandardCharsets.UTF_8));
+        devices = new AppleDevices(profile.vendorId);
+        boolean route = false;
+        android.content.ComponentName component = android.content.ComponentName.unflattenFromString(profile.player);
+        try { route = context.getPackageManager().getActivityInfo(component,0).enabled; } catch(android.content.pm.PackageManager.NameNotFoundException absent) { }
+        active = profile.enabled && route && profile.matches(android.os.Build.MANUFACTURER,android.os.Build.MODEL,android.os.Build.VERSION.SDK_INT,android.os.Build.VERSION.INCREMENTAL);
+    }
 
     public static void main(String[] args) throws Exception {
         if (android.os.Process.myUid() != 2000) throw new SecurityException("Shell UID required");
@@ -59,10 +67,11 @@ public final class ShellBridge {
                     long started = SystemClock.elapsedRealtime();
                     System.out.println("input=" + currentInput());
                     System.out.println("activity=" + bridge.focusedActivity());
+                    System.out.println("profile=" + bridge.profile.id + " active=" + bridge.active);
                     System.out.println("checksMs=" + (SystemClock.elapsedRealtime() - started));
                 }
                 if ("--standby".equals(args[0])) {
-                    bridge.standby(new CecEvents.Command("owner-requested diagnostic standby", 1));
+                    bridge.standby(new CecEvents.Command("owner-requested diagnostic standby", bridge.profile.port));
                     bridge.actions.shutdown();
                     if (!bridge.actions.awaitTermination(10, TimeUnit.SECONDS)) throw new java.io.IOException("Diagnostic standby timed out");
                     System.out.println("interactiveAfterStandby=" + bridge.power.isInteractive());
@@ -75,6 +84,7 @@ public final class ShellBridge {
             if (held == null) return;
             write("pid", Integer.toString(android.os.Process.myPid()));
             write("version", VERSION);
+            bridge.record("Profile=" + bridge.profile.id + " active=" + bridge.active);
             bridge.record("Started " + VERSION + " uid=2000 pid=" + android.os.Process.myPid());
             if (bridge.power.isInteractive()) bridge.beginWake("bridge-start");
             Runtime.getRuntime().addShutdownHook(new Thread(() -> { if (bridge.logger != null) bridge.logger.destroy(); }));
@@ -109,7 +119,9 @@ public final class ShellBridge {
                     write("status.txt", "version=" + VERSION + " pid=" + android.os.Process.myPid() + " uid=2000\n" +
                             "interactive=" + power.isInteractive() + " frames=" + frames + " focus=" + focus + "\n" +
                             "logs=" + status + " snapshotAgeMs=" + (SystemClock.elapsedRealtime() - lastFrameAt) + "\n" +
+                            "profile=" + profile.id + " active=" + active + " elapsedMs=" + SystemClock.elapsedRealtime() + "\n" +
                             "lastAction=" + lastAction + "\n");
+                    write("heartbeat", Long.toString(SystemClock.elapsedRealtime()));
                     writtenAt = SystemClock.elapsedRealtime();
                 }
                 Thread.sleep(SystemClock.elapsedRealtime() < wakeUntil ? 200 : 1000);
@@ -148,16 +160,16 @@ public final class ShellBridge {
 
     private synchronized void standby(CecEvents.Command event) {
         long now = SystemClock.elapsedRealtime();
-        if (new File(DIR, "stop").exists() || !power.isInteractive() || now - lastStandbyAt < 4000) return;
+        if (!active || event.port != profile.port || new File(DIR, "stop").exists() || !power.isInteractive() || now - lastStandbyAt < 4000) return;
         lastStandbyAt = now;
         actions.execute(() -> {
             try {
                 String front = focusedPackage();
                 for (int i = 0; i < 4 && "unknown".equals(front); i++) { Thread.sleep(50); front = focusedPackage(); }
                 String selected = currentInput();
-                if (new File(DIR, "stop").exists() || !selected.contains(".Hdmi" + event.port + "InputService/")) return;
-                if (!power.isInteractive() || !(PLAYER.equals(front) || "com.droidlogic.tvinput".equals(front))) { record("Ignored standby outside HDMI player: " + front); return; }
-                if (INPUT.equals(selected)) write("resume-hdmi", Long.toString(System.currentTimeMillis()));
+                if (new File(DIR, "stop").exists() || !profile.inputId.equals(selected)) return;
+                if (!power.isInteractive() || !Profile.normalizeComponent(profile.player).equals(Profile.normalizeComponent(focusedActivity()))) { record("Ignored standby outside HDMI player: " + front); return; }
+                if (profile.inputId.equals(selected)) write("resume-hdmi", Long.toString(System.currentTimeMillis()));
                 wakeUntil = 0;
                 record("Native standby: " + event.identity);
                 command("input", "keyevent", "KEYCODE_POWER");
@@ -176,7 +188,7 @@ public final class ShellBridge {
     private synchronized void beginWake(String source) {
         long now = SystemClock.elapsedRealtime();
         record("Wake check source=" + source + " armed=" + armed.exists() + " interactive=" + power.isInteractive());
-        if (new File(DIR, "stop").exists() || !armed.exists() || now < wakeUntil) return;
+        if (!active || new File(DIR, "stop").exists() || !armed.exists() || now < wakeUntil) return;
         wakeUntil = now + 5000;
         actions.execute(() -> {
             for (int i = 0; i < 20 && !power.isInteractive(); i++) try { Thread.sleep(25); } catch (InterruptedException ignored) { return; }
@@ -185,30 +197,28 @@ public final class ShellBridge {
     }
 
     private synchronized void handoff() {
-        if (new File(DIR, "stop").exists() || !power.isInteractive() || SystemClock.elapsedRealtime() >= wakeUntil) return;
+        if (!active || new File(DIR, "stop").exists() || !power.isInteractive() || SystemClock.elapsedRealtime() >= wakeUntil) return;
         try {
             String activity = focusedActivity();
             String front = packageOf(activity);
-            if (PLAYER.equals(front)) {
+            if (Profile.normalizeComponent(profile.player).equals(Profile.normalizeComponent(activity))) {
                 if (armed.exists()) record("Wake: native HDMI player already focused");
                 armed.delete(); return;
             }
             if ("unknown".equals(front)) return;
-            if (!("com.mitv.tvhome".equals(front) || "app.orchard.tv".equals(front))) { record("Wake: leaving foreground " + front); finishWake(); return; }
-            if (!(activity.endsWith("/com.mitv.tvhome.MainActivityUserMode") ||
-                    activity.endsWith("/com.mitv.tvhome.MainActivity") ||
-                    activity.endsWith("/app.orchard.tv.MainActivity"))) return;
-            if (!INPUT.equals(currentInput())) { finishWake(); return; }
+            if (!profile.isLauncher(activity)) { record("Wake: leaving unlisted foreground"); finishWake(); return; }
+            if (!profile.inputId.equals(currentInput())) { finishWake(); return; }
             openInput();
-            record("Early wake handoff: " + front + " -> HDMI1");
+            record("Early wake handoff: " + front + " -> configured input");
             armed.delete();
         } catch (Exception e) { Log.w("CecBridge", "Wake handoff failed", e); finishWake(); }
     }
 
     private void openInput() throws Exception {
-        Intent intent = new Intent(PLAYER + ".EXTSRC_PLAY")
-                .setComponent(new ComponentName(PLAYER, PLAYER + ".ExternalSourceActivity"))
-                .putExtra("input", 23).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (!active) throw new IllegalStateException("Inactive/mismatched profile");
+        Intent intent = new Intent(profile.action)
+                .setComponent(ComponentName.unflattenFromString(profile.player))
+                .putExtra(profile.inputExtra, profile.inputValue).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         // A standalone shell process has no registered application thread. Use the same null
         // caller and shell package as `am start`, without starting another Java VM at every wake.
         Object manager = Class.forName("android.app.ActivityManager").getMethod("getService").invoke(null);

@@ -20,12 +20,13 @@ public final class CecService extends AccessibilityService {
     private volatile LocalAdb running;
     private volatile String status = "starting";
     private volatile long checks;
+    private AdbKeeper keeper;
 
     @Override protected void onServiceConnected() {
         if (connected) return;
         connected = true;
         instance = this;
-        getSharedPreferences("cec", MODE_PRIVATE).edit().remove("resume_input").apply();
+        keeper = new AdbKeeper(this);
         worker = Executors.newSingleThreadScheduledExecutor();
         worker.execute(this::ensureBridge);
     }
@@ -34,14 +35,19 @@ public final class CecService extends AccessibilityService {
         if (!connected) return;
         boolean healthy = false;
         try {
+            keeper.check();
+            String config = ConfigStore.read(this);
+            if (config == null) { status = "not configured; no power actions"; return; }
+            String encoded = android.util.Base64.encodeToString(config.getBytes(StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            try (InputStream in = getAssets().open("start-bridge.sh")) {
+            for (String asset : new String[]{"health.sh", "start-bridge.sh"}) try (InputStream in = getAssets().open(asset)) {
                 byte[] buffer = new byte[4096];
                 int count;
                 while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
+                bytes.write(10);
             }
             status = shell("sh -c " + quote(new String(bytes.toByteArray(), StandardCharsets.UTF_8)) +
-                    " cec-standby-start " + quote(getApplicationInfo().sourceDir) + " " + quote(ShellBridge.VERSION));
+                    " cec-standby-start " + quote(getApplicationInfo().sourceDir) + " " + quote(ShellBridge.VERSION) + " " + quote(encoded) + " " + (getSystemService(PowerManager.class).isInteractive() ? "1" : "0"));
             checks++;
             healthy = status.startsWith("version=" + ShellBridge.VERSION + " ");
         } catch (Exception e) { status = e.toString(); if (connected) Log.w("CecStandby", "Bridge check failed", e); }
@@ -83,10 +89,12 @@ public final class CecService extends AccessibilityService {
     @Override protected void dump(java.io.FileDescriptor fd, java.io.PrintWriter writer, String[] args) {
         writer.println("Bridge bootstrap connected=" + connected + " checks=" + checks);
         writer.println(status);
+        if (keeper != null) writer.println("ADB: " + keeper.status());
     }
     private void stop() {
         connected = false;
         if (instance == this) instance = null;
+        if (keeper != null) { keeper.close(); keeper = null; }
         if (worker != null) worker.shutdownNow();
         if (running != null) running.close();
     }
