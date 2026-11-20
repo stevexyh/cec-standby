@@ -3,15 +3,16 @@
 给特定 Android 电视固件修补 HDMI-CEC 待机问题，并在唤醒后回到选定 HDMI。工具运行在电视上，不需要电脑常驻，也不需要安装 Aerial。
 
 - 包名：`io.github.stevexyh.cecstandby`
-- 当前源码版本：**0.2.0 / versionCode 2**
-- 0.1.0 是从 [Aerial](https://github.com/pengchujin/aerial-tv) 仓库中独立 CEC 补丁 0.6.3 脱敏迁移的基线；0.2.0 加入机型配置与独立 ADB 恢复。保留上游 MIT 许可。
-- **新包尚未真机验收。** 已通过本地构建与离线测试；旧补丁的真机结果不能替代新包的验证，也不能证明长期稳定。
+- 当前源码版本：**0.3.0 / versionCode 3**
+- 0.1.0 是从 [Aerial](https://github.com/pengchujin/aerial-tv) 仓库中独立 CEC 补丁 0.6.3 脱敏迁移的基线；0.2.0 加入机型配置与独立 ADB 恢复；0.3.0 加入档案格式 v2 与 TCL（Realtek rtd285o）适配。保留上游 MIT 许可。
+- TCL BeyondTV（固件 AP03）与 BeyondTV2（固件 AP04）已用 0.3.0 真机验收：Apple TV 待机后电视立即待机，重启后自动恢复（见 [docs/devices/tcl-beyondtv.md](docs/devices/tcl-beyondtv.md)）。小米档案仍未用新包验收。
+- **小米新包尚未真机验收。** 已通过本地构建与离线测试；旧补丁的真机结果不能替代新包的验证，也不能证明长期稳定。
 
 ## 能做什么
 
 JSON 档案配置 CEC vendor、HDMI 端口、输入标识、原生播放器和允许跳转的桌面。安装前及运行时严格匹配厂商、型号、Android API 和固件版本；不匹配就不执行电源动作。未知设备只支持诊断，不会自动猜测设置。
 
-目前只实现 Android 9/API 28 的系统接口和小米式日志解析。内置小米 ASTP0 档案供后续实测；配置化不等于通用兼容。电视需支持网络 ADB 的 5555 端口，且允许给本应用单独授权；Android 11+ 无线调试不在支持范围内。
+目前只实现 Android 9/API 28 的系统接口，以及小米式与 TCL（Realtek）日志解析。内置小米 ASTP0 与 TCL BeyondTV 档案；配置化不等于通用兼容。电视需支持网络 ADB 的 5555 端口，且允许给本应用单独授权；Android 11+ 无线调试不在支持范围内。
 
 ## 本地构建与测试
 

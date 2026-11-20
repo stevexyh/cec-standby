@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 
 /** Device-local shell worker, independent of application force-stop but not adbd lifetime. */
 public final class ShellBridge {
-    static final String VERSION = "0.2.0";
+    static final String VERSION = "0.3.0";
     static final String DIR = "/data/local/tmp/cec-standby";
     private final Profile profile;
     private final boolean active;
@@ -65,7 +65,7 @@ public final class ShellBridge {
                 if ("--open-input".equals(args[0])) { bridge.openInput(); System.out.println("HDMI activity requested"); }
                 if ("--check".equals(args[0])) {
                     long started = SystemClock.elapsedRealtime();
-                    System.out.println("input=" + currentInput());
+                    System.out.println("input=" + bridge.currentInput());
                     System.out.println("activity=" + bridge.focusedActivity());
                     System.out.println("profile=" + bridge.profile.id + " active=" + bridge.active);
                     System.out.println("checksMs=" + (SystemClock.elapsedRealtime() - started));
@@ -94,8 +94,11 @@ public final class ShellBridge {
         }
     }
 
+    private boolean tcl() { return "tcl".equals(profile.events); }
+
     private void snapshots() {
         RawCecEvents parser = new RawCecEvents(devices);
+        TclCecEvents tclParser = new TclCecEvents(devices, System.currentTimeMillis());
         long writtenAt = 0;
         boolean wasInteractive = power.isInteractive();
         while (!new File(DIR, "stop").exists()) {
@@ -106,7 +109,7 @@ public final class ShellBridge {
                 if (interactive) {
                     String dump = command("dumpsys", "hdmi_control");
                     long now = System.currentTimeMillis();
-                    CecEvents.Command event = parser.accept(dump, now);
+                    CecEvents.Command event = tcl() ? tclParser.acceptSnapshot(dump, now) : parser.accept(dump, now);
                     focus = focusedPackage();
                     frames++;
                     lastFrameAt = SystemClock.elapsedRealtime();
@@ -135,15 +138,20 @@ public final class ShellBridge {
         while (!new File(DIR, "stop").exists()) {
             long startedAt = System.currentTimeMillis();
             LiveCecEvents parser = new LiveCecEvents(devices, startedAt);
+            TclCecEvents tclParser = new TclCecEvents(devices, startedAt);
             try {
-                Process process = new ProcessBuilder("/system/bin/logcat", "-T", "1", "-v", "epoch", "-v", "uid", "-s", "HDMI:D", "PowerManagerService:I").redirectErrorStream(true).start();
+                java.util.List<String> logcat = new java.util.ArrayList<>(java.util.Arrays.asList("/system/bin/logcat", "-T", "1", "-v", "epoch", "-v", "uid", "-s"));
+                if (tcl()) logcat.addAll(java.util.Arrays.asList("sita.proxy:I", "HdmiCecController:D"));
+                else logcat.add("HDMI:D");
+                logcat.add("PowerManagerService:I");
+                Process process = new ProcessBuilder(logcat).redirectErrorStream(true).start();
                 logger = process;
                 status = "listening";
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         long now = System.currentTimeMillis();
-                        CecEvents.Command event = parser.accept(line, now);
+                        CecEvents.Command event = tcl() ? tclParser.accept(line, now) : parser.accept(line, now);
                         if (event != null) standby(event);
                         Matcher wake = WAKE.matcher(line);
                         if (wake.matches()) {
@@ -169,10 +177,11 @@ public final class ShellBridge {
                 String selected = currentInput();
                 if (new File(DIR, "stop").exists() || !profile.inputId.equals(selected)) return;
                 if (!power.isInteractive() || !Profile.normalizeComponent(profile.player).equals(Profile.normalizeComponent(focusedActivity()))) { record("Ignored standby outside HDMI player: " + front); return; }
-                if (profile.inputId.equals(selected)) write("resume-hdmi", Long.toString(System.currentTimeMillis()));
+                if (profile.wakeHandoff && profile.inputId.equals(selected)) write("resume-hdmi", Long.toString(System.currentTimeMillis()));
                 wakeUntil = 0;
                 record("Native standby: " + event.identity);
-                command("input", "keyevent", "KEYCODE_POWER");
+                // SLEEP never toggles: it is a no-op if the TV went to sleep in the meantime.
+                command("input", "keyevent", "KEYCODE_" + profile.standbyKey);
                 for (int i = 0; i < 30 && power.isInteractive(); i++) Thread.sleep(100);
                 record("Standby result: interactive=" + power.isInteractive());
             } catch (Exception e) { Log.e("CecBridge", "Native standby failed", e); }
@@ -188,7 +197,7 @@ public final class ShellBridge {
     private synchronized void beginWake(String source) {
         long now = SystemClock.elapsedRealtime();
         record("Wake check source=" + source + " armed=" + armed.exists() + " interactive=" + power.isInteractive());
-        if (!active || new File(DIR, "stop").exists() || !armed.exists() || now < wakeUntil) return;
+        if (!active || !profile.wakeHandoff || new File(DIR, "stop").exists() || !armed.exists() || now < wakeUntil) return;
         wakeUntil = now + 5000;
         actions.execute(() -> {
             for (int i = 0; i < 20 && !power.isInteractive(); i++) try { Thread.sleep(25); } catch (InterruptedException ignored) { return; }
@@ -216,6 +225,7 @@ public final class ShellBridge {
 
     private void openInput() throws Exception {
         if (!active) throw new IllegalStateException("Inactive/mismatched profile");
+        if (!profile.wakeHandoff) throw new IllegalStateException("Profile has no wake handoff");
         Intent intent = new Intent(profile.action)
                 .setComponent(ComponentName.unflattenFromString(profile.player))
                 .putExtra(profile.inputExtra, profile.inputValue).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -232,7 +242,8 @@ public final class ShellBridge {
     }
 
     private void finishWake() { wakeUntil = 0; armed.delete(); }
-    private static String currentInput() throws Exception {
+    private String currentInput() throws Exception {
+        if ("tv-input-session".equals(profile.inputSource)) return TvInputs.mainSessionInput(command("dumpsys", "tv_input"));
         // Like `am start`, `settings` obtains its provider through the shell's external-provider
         // API. Context.getContentResolver() requires a registered application thread and fails
         // in app_process, even when creating a com.android.shell package context succeeds.

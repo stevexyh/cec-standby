@@ -4,6 +4,7 @@
 
 - 0.1.0/code 1: sanitized extraction from the old in-tree helper 0.6.3, independent namespace io.github.stevexyh.cecstandby, build/signing and AI docs.
 - 0.2.0/code 2: profile-based input/vendor/player/launcher behavior, strict device/API/firmware guard, protected atomic configuration, independent opt-in ADB restoration, heartbeat/wake-grace process recovery, explicit device tooling and offline tests.
+- 0.3.0/code 3: profile schema 2 (events/inputSource/standbyKey/wakeHandoff), TCL/Realtek rtd285o CEC adapter, main tv_input session input source, `tcl-beyondtv-ap03` and `tcl-beyondtv2-ap04` profiles. Physically accepted on both exact builds: see docs/devices/tcl-beyondtv.md.
 - GitHub repository is public; no APK binary release or production signing identity has been established. Original Aerial repository/staged files and original TV installation were not changed.
 
 ## Session restrictions and validation

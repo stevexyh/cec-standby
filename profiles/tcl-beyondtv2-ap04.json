@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "id": "tcl-beyondtv2-ap04-android9",
+  "manufacturer": "TCL",
+  "model": "BeyondTV2",
+  "sdk": 28,
+  "firmware": "AP04",
+  "vendorId": 4346,
+  "port": 1,
+  "inputId": "com.tcl.tvpassthrough/.TvPassThroughService/HW1413744128",
+  "player": "com.tcl.tv/.TVActivity",
+  "events": "tcl",
+  "inputSource": "tv-input-session",
+  "standbyKey": "SLEEP",
+  "wakeHandoff": false,
+  "keepAdb": false,
+  "enabled": true
+}
