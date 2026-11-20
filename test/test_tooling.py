@@ -22,6 +22,27 @@ class ToolingTest(unittest.TestCase):
             d[key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
                 validate(d)
+    def test_schema2_profiles(self):
+        for name in ("tcl-beyondtv-ap03.json", "tcl-beyondtv2-ap04.json"):
+            self.assertEqual(load(ROOT / "profiles" / name)["events"], "tcl")
+        tcl = load(ROOT / "profiles/tcl-beyondtv-ap03.json")
+        self.assertNotIn("action", tcl)
+        for key, value in [("events", "lg"), ("inputSource", "guess"), ("standbyKey", "POWER; reboot"), ("wakeHandoff", "false"), ("action", "example.player.OPEN"), ("schemaVersion", 3)]:
+            d = copy.deepcopy(tcl)
+            d[key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                validate(d)
+        d = copy.deepcopy(tcl)
+        d["wakeHandoff"] = True
+        with self.assertRaises(ValueError):
+            validate(d)
+        d = copy.deepcopy(self.profile)
+        d.update({"schemaVersion": 2, "events": "xiaomi", "inputSource": "setting", "standbyKey": "POWER", "wakeHandoff": True})
+        validate(d)
+        d = copy.deepcopy(self.profile)
+        d["events"] = "tcl"
+        with self.assertRaises(ValueError):
+            validate(d)
     def test_exact_match(self):
         facts = {k: str(self.profile[k]) for k in ("manufacturer", "model", "sdk", "firmware")}
         self.assertTrue(matching(self.profile, facts))
