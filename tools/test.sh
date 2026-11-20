@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Offline only: no ADB, device discovery or network operations.
 set -euo pipefail
+# Fixtures render dumpsys wall-clock history in the original prototype's UTC+8 zone.
+export TZ=Asia/Shanghai
 cd "$(dirname "$0")/.."
 mkdir -p build/tests
 javac -d build/tests src/io/github/stevexyh/cecstandby/{Profile,RecoveryPolicy,AppleDevices,LiveCecEvents,CecEvents,RawCecEvents}.java test/*.java
